@@ -81,12 +81,6 @@ func registerFileHandler(w http.ResponseWriter, r *http.Request) {
 
 func uploadChunkHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received complete upload request for:", r.URL.Path)
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Error getting current working directory:", err)
-	} else {
-		fmt.Println("Current working directory:", cwd)
-	}
 	if r.Method != "POST" {
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
@@ -136,12 +130,6 @@ func uploadChunkHandler(w http.ResponseWriter, r *http.Request) {
 
 func completeUploadHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received complete upload request for:", r.URL.Path)
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Error getting current working directory:", err)
-	} else {
-		fmt.Println("Current working directory:", cwd)
-	}
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 3 {
 		http.Error(w, "Invalid URL", http.StatusBadRequest)

@@ -11,12 +11,10 @@ How it works
 
 **To run server type the following command:**
 
-`go build server.go                                                   
-./server <host> <port>`
+`go run server.go <host> <port>`
 
 -----
 #### To run client type: 
 
-`go build client.go                                                                                                                                                            
-./client <path to your file> <server host> <port>`
+`go run client.go <path to your file> <server host> <port>`
 
