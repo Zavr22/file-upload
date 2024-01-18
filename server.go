@@ -251,26 +251,32 @@ func updateFileInfoDB(metadata FileMetadata) error {
 
 	fileInfoMutex.Lock()
 	defer fileInfoMutex.Unlock()
-
-	var fileInfos []FileMetadata
-
+	var fileInfos map[string]FileMetadata
 	data, err := ioutil.ReadFile(fileInfoDB)
 	if err != nil {
-		json.Unmarshal(data, &fileInfos)
-		return err
+		if !os.IsNotExist(err) {
+			fmt.Println("Error reading file info DB:", err)
+			return err
+		}
+		fileInfos = make(map[string]FileMetadata)
+	} else {
+		err = json.Unmarshal(data, &fileInfos)
+		if err != nil {
+			fmt.Println("Error unmarshalling file info:", err)
+			return err
+		}
 	}
-
-	fileInfos = append(fileInfos, metadata)
-
-	newData, err := json.Marshal(fileInfos)
+	fileInfos[metadata.ID] = metadata
+	newData, err := json.MarshalIndent(fileInfos, "", "  ")
 	if err != nil {
 		fmt.Println("Error marshaling file info:", err)
 		return err
 	}
-
-	if err := ioutil.WriteFile(fileInfoDB, newData, 0644); err != nil {
+	err = ioutil.WriteFile(fileInfoDB, newData, 0644)
+	if err != nil {
 		fmt.Println("Error writing to file info DB:", err)
 		return err
 	}
+
 	return nil
 }

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 )
 
 type FileInfo struct {
@@ -25,13 +27,17 @@ type RegistrationResponse struct {
 }
 
 func main() {
-	if len(os.Args) != 4 {
-		fmt.Println("Usage: send_file <file_path> <server_ip> <server_port>")
+	if len(os.Args) != 5 {
+		fmt.Println("Usage: send_file <file_path> <server_ip> <server_port> <maxParallelUploads>")
 		os.Exit(1)
 	}
 
 	filePath, serverIP, serverPort := os.Args[1], os.Args[2], os.Args[3]
-
+	maxConcurrentUploads, err := strconv.Atoi(os.Args[4])
+	if err != nil {
+		fmt.Println("Error: Invalid number for max concurrent uploads")
+		os.Exit(1)
+	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		fmt.Printf("Error opening file: %v\n", err)
@@ -67,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = sendFileChunks(file, serverIP, serverPort, regResponse.ID, regResponse.ChunkSize)
+	err = sendFileChunks(file, serverIP, serverPort, regResponse.ID, regResponse.ChunkSize, maxConcurrentUploads)
 	if err != nil {
 		fmt.Printf("Error sending file chunks: %v\n", err)
 		os.Exit(1)
@@ -109,14 +115,17 @@ func registerFile(serverIP, serverPort string, metadata FileInfo) (*Registration
 	return &regResponse, nil
 }
 
-func sendFileChunks(file *os.File, serverIP, serverPort, fileID string, chunkSize int) error {
+func sendFileChunks(file *os.File, serverIP, serverPort, fileID string, chunkSize, maxConcurrentUploads int) error {
 	buffer := make([]byte, chunkSize)
-	fmt.Println(chunkSize)
 	_, err := file.Seek(0, io.SeekStart)
 	if err != nil {
 		fmt.Printf("Error seeking to the beginning of the file: %v\n", err)
 		return err
 	}
+	semaphore := make(chan struct{}, maxConcurrentUploads)
+	var wg sync.WaitGroup
+	errorChannel := make(chan error, maxConcurrentUploads)
+	defer close(errorChannel)
 
 	for chunkNumber := 1; ; chunkNumber++ {
 		bytesRead, err := file.Read(buffer)
@@ -132,17 +141,23 @@ func sendFileChunks(file *os.File, serverIP, serverPort, fileID string, chunkSiz
 			fmt.Printf("Error reading file: %v\n", err)
 			return err
 		}
+		chunkData := make([]byte, bytesRead)
+		copy(chunkData, buffer[:bytesRead])
 
-		chunkData := buffer[:bytesRead]
 		chunkHash := sha256.Sum256(chunkData)
-		fmt.Printf("Sending chunk %d (hash: %x)\n", chunkNumber, chunkHash)
+		fmt.Printf("Preparing to send chunk %d (hash: %x)\n", chunkNumber, chunkHash)
 
-		err = sendChunk(serverIP, serverPort, fileID, chunkNumber, chunkData, fmt.Sprintf("%x", chunkHash))
-		if err != nil {
-			fmt.Printf("Error sending chunk %d: %v\n", chunkNumber, err)
-			return err
-		}
+		wg.Add(1)
+		go func(cn int, cd []byte, ch string) {
+			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			if err := sendChunk(serverIP, serverPort, fileID, cn, cd, ch); err != nil {
+				errorChannel <- fmt.Errorf("error sending chunk %d: %v", cn, err)
+			}
+		}(chunkNumber, chunkData, fmt.Sprintf("%x", chunkHash))
 	}
+	wg.Wait()
 	return nil
 }
 
@@ -187,6 +202,7 @@ func completeUpload(serverIP, serverPort, fileID string) {
 
 	if resp.StatusCode != http.StatusOK {
 		fmt.Printf("Error during upload completion: server returned non-OK status: %d\n", resp.StatusCode)
+	} else {
+		fmt.Println("File upload completed successfully")
 	}
-	fmt.Println("File upload completed successfully")
 }

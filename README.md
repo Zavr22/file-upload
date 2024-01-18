@@ -16,5 +16,5 @@ How it works
 -----
 #### To run client type: 
 
-`go run client.go <path to your file> <server host> <port>`
+`go run client.go <path to your file> <server host> <port> <maxConcurrentUploads>`
 
